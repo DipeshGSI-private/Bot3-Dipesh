@@ -370,7 +370,7 @@ public class ErfanGSIs extends Command {
                                     + " | " + "[Vega](http://github.com/VegaBobo)"
                                     + "\n\n" // Sone space here without content
                                     + "*Join*:\n[Channel](https://t.me/kangergsi) | [Group](https://t.me/kangergsi_support)"
-                                    , Long.parseLong(sfsetup.getSfConf("bot-announcement-id")));
+                                    , Long.parseLong(sfsetup.getSfConf("-1001447051955")));
                         } catch (Exception e) {
                             LOGGER.error("bot-announcement-id looks wrong or not set");
                         }
