@@ -1,4 +1,4 @@
-# Bo³+t Bot - Kurata Yui
+# Bo³+t Bot - Priiiiyo
 
 Just a other Telegram Bot made using [TelegramBots](https://github.com/rubenlagus/TelegramBots) Java Library
 
