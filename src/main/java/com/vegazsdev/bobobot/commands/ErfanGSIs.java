@@ -36,10 +36,11 @@ public class ErfanGSIs extends Command {
     private final File[] supportedGSIs9 = new File(toolPath + "roms/9").listFiles(File::isDirectory);
     private final File[] supportedGSIs10 = new File(toolPath + "roms/10").listFiles(File::isDirectory);
     private final File[] supportedGSIs11 = new File(toolPath + "roms/11").listFiles(File::isDirectory);
+    private final File[] supportedGSIsS = new File(toolPath + "roms/S").listFiles(File::isDirectory);
     private String infoGSI = "";
 
     public ErfanGSIs() {
-        super("jurl2gsi", "Can port gsi");
+        super("url2gsi", "Can port gsi");
     }
 
     private static String[] listFilesForFolder(final File folder) {
@@ -137,6 +138,10 @@ public class ErfanGSIs extends Command {
                                                 .replace("]", ""))
                                 .replace("%3",
                                         Arrays.toString(supportedGSIs11).replace(toolPath + "roms/11/", "")
+                                                .replace("[", "")
+                                                .replace("]", ""))
+                                .replace("%4",
+                                        Arrays.toString(supportedGSIsS).replace(toolPath + "roms/S/", "")
                                                 .replace("[", "")
                                                 .replace("]", "")), update);
                     }
@@ -366,10 +371,9 @@ public class ErfanGSIs extends Command {
                                     + "\n\n*Information:*\n`" + descGSI
                                     + "`\n" + generateLinks.toString()
                                     + "\n\n*Credits:*\n[Erfan Abdi](https://github.com/erfanoabdi)"
-                                    + " | " + "[Nippon](https://github.com/nnippon)"
                                     + " | " + "[Vega](http://github.com/VegaBobo)"
                                     + "\n\n" // Sone space here without content
-                                    + "*Join*:\n[Channel](https://t.me/Gsitutorials) | [Group](https://t.me/Gsitutorials_Discussions)"
+                                    + "*Join*:\n[Channel](https://t.me/PriiiiyoGSI) | [Group](https://t.me/PriiiiyoGSIs)"
                                     , Long.parseLong(sfsetup.getSfConf("bot-announcement-id")));
                         } catch (Exception e) {
                             LOGGER.error("bot-announcement-id looks wrong or not set");
