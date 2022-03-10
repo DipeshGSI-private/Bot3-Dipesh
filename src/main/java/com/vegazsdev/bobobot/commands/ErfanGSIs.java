@@ -366,14 +366,14 @@ public class ErfanGSIs extends Command {
                 try {
                     if (sfsetup.getSfConf("bot-send-announcement").equals("true")) {
                         try {
-                            bot.sendMessage2ID("*"+ "Requested " + gsiCmdObj.getGsi() + " GSI*"
+                            bot.sendMessage2ID("*"+ "Requested " + gsiCmdObj.getGsi() + " GSI + SGSI*"
                                     + "\n*From " + getModelOfOutput() + "*"
                                     + "\n\n*Information:*\n`" + descGSI
                                     + "`\n" + generateLinks.toString()
                                     + "\n\n*Credits:*\n[Erfan Abdi](https://github.com/erfanoabdi)"
                                     + " | " + "[Vega](http://github.com/VegaBobo)"
                                     + "\n\n" // Sone space here without content
-                                    + "*Join*:\n[Channel](https://t.me/PriiiiyoGSI) | [Group](https://t.me/PriiiiyoGSIs)"
+                                    + "*Join*:\n[Channel](https://t.me/dpgsi_updates) | [Group](https://t.me/dpgsi)"
                                     , Long.parseLong(sfsetup.getSfConf("bot-announcement-id")));
                         } catch (Exception e) {
                             LOGGER.error("bot-announcement-id looks wrong or not set");
