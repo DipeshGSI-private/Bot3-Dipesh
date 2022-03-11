@@ -1,29 +1,47 @@
 package com.vegazsdev.bobobot;
 
-import com.vegazsdev.bobobot.core.Bot;
-import com.vegazsdev.bobobot.core.CommandWithClass;
+import com.vegazsdev.bobobot.core.bot.Bot;
+import com.vegazsdev.bobobot.core.command.CommandWithClass;
 import com.vegazsdev.bobobot.db.DbThings;
 import com.vegazsdev.bobobot.db.PrefObj;
+import com.vegazsdev.bobobot.utils.FileTools;
 import com.vegazsdev.bobobot.utils.XMLs;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.core.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatMember;
+import org.telegram.telegrambots.meta.api.methods.groupadministration.LeaveChat;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
-import org.telegram.telegrambots.meta.api.objects.ChatMember;
+import org.telegram.telegrambots.meta.api.objects.chatmember.ChatMember;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Objects;
+import java.util.Random;
+import java.util.concurrent.ExecutionException;
 
+@SuppressWarnings("rawtypes")
 public class TelegramBot extends TelegramLongPollingBot {
 
-    private static final Logger LOGGER = (Logger) LogManager.getLogger(TelegramBot.class);
-
+    private static final Logger logger = LoggerFactory.getLogger(TelegramBot.class);
+    /*
+     * Don't be angry guys, just a joke
+     */
+    private final String[] messages = {
+            "Go back to the kitchen", "Uninstall the telegram, no one will care",
+            "Have you ever wondered why you were born? There is no reason", "Go sleep",
+            "Why do you use this command? Well, nobody cares", "Life is random chaos, ordered by time",
+            "They got lost again, bunch of idiots!", "Breaking the rules is worse than trash, but abandoning your friends is worse than that.",
+            "A chance in a million is better than no chance!", "When you love, there is a risk of hating.",
+            "Have you washed the dishes yet?", "You're cringe.",
+            "owo", "lmao...", "( ͡° ͜ʖ ͡°)"
+    };
     private final Bot bot;
+    private PrefObj chatPrefs;
     private ArrayList<Class> commandClasses;
 
     TelegramBot(Bot bot, ArrayList<Class> commandClasses) {
@@ -35,141 +53,288 @@ public class TelegramBot extends TelegramLongPollingBot {
         this.bot = bot;
     }
 
+    public static PrefObj getPrefs(double chatId) {
+        PrefObj prefObj = DbThings.selectIntoPrefsTable(chatId);
+        if (prefObj == null) {
+            DbThings.insertIntoPrefsTable(chatId);
+        }
+        return prefObj;
+    }
+
     @Override
     public void onUpdateReceived(Update update) {
-        new Thread(new Runnable() {
-            private TelegramBot tBot;
+        /*
+         * Avoid hotkey problem
+         */
+        if (!FileTools.checkFileExistsCurPath("databases/prefs.db")) {
+            DbThings.createNewDatabase("prefs.db");
+            DbThings.createTable("prefs.db",
+                    "CREATE TABLE IF NOT EXISTS chat_prefs ("
+                            + "group_id real UNIQUE PRIMARY KEY,"
+                            + "able_to_send_random_messages real DEFAULT 1,"
+                            + "hotkey text DEFAULT '/',"
+                            + "lang text DEFAULT 'strings-en.xml'"
+                            + ");"
+            );
+        }
 
-            Runnable init(TelegramBot tBot) {
-                this.tBot = tBot;
-                return this;
+        if (update.getMessage() != null) {
+            /*
+             * PrefObj, chatPrefs
+             */
+            chatPrefs = getPrefs(Double.parseDouble(Objects.requireNonNull(update.getMessage().getChatId().toString())));
+
+            /*
+             * Check if exists that chat in our db
+             */
+            if (chatPrefs == null) {
+                try {
+                    chatPrefs = new PrefObj(0, "strings-en.xml", "!", 1);
+                } catch (Exception exception) {
+                    logger.error(exception.getMessage());
+                }
             }
 
-            @Override
-            public void run() {
-                if (update.hasMessage() && update.getMessage().getText() != null
-                        && !update.getMessage().getText().equals("")
-                        && Objects.requireNonNull(XMLs.getFromStringsXML(Main.DEF_CORE_STRINGS_XML, "possible_hotkeys"))
-                        .indexOf(update.getMessage().getText().charAt(0)) >= 0) {
+            /*
+             * Create thread to run commands (it can run without thread)
+             */
+            new Thread(new Runnable() {
+                private TelegramBot tBot;
 
-                    String msg = update.getMessage().getText();
-                    int usrId = update.getMessage().getFrom().getId();
-                    PrefObj chatPrefs = getPrefs(update);
+                /*
+                 * Create TelegramBot object using init()
+                 */
+                Runnable init(TelegramBot tBot) {
+                    this.tBot = tBot;
+                    return this;
+                }
 
-                    if (chatPrefs == null) {
-                        chatPrefs = new PrefObj(0, "strings-en.xml", "!");
-                    }
+                /*
+                 * Check conditional, command & other things
+                 */
+                @Override
+                public void run() {
+                    if (update.hasMessage() && update.getMessage().getText() != null
+                            && !update.getMessage().getText().equals("")
+                            && Objects.requireNonNull(XMLs.getFromStringsXML(Main.DEF_CORE_STRINGS_XML, "possible_hotkeys"))
+                            .indexOf(update.getMessage().getText().charAt(0)) >= 0) {
 
-                    if (msg.startsWith(Objects.requireNonNull(chatPrefs.getHotkey()))) {
+                        String msg = update.getMessage().getText();
+                        long usrId = update.getMessage().getFrom().getId();
 
-                        for (CommandWithClass cmds : getActiveCommandsAsCmdObject()) {
+                        /*
+                         * It is ok to run and send command
+                         */
+                        if (chatPrefs.getHotkey() != null && msg.startsWith(Objects.requireNonNull(chatPrefs.getHotkey()))) {
+                            for (CommandWithClass commandWithClass : getActiveCommandsAsCmdObject()) {
+                                String adjustCommand = msg.replace(Objects.requireNonNull(chatPrefs.getHotkey()), "");
 
-                            String adjustCommand = msg.replace(Objects.requireNonNull(chatPrefs.getHotkey()), "");
+                                if (adjustCommand.contains(" ")) {
+                                    adjustCommand = adjustCommand.split(" ")[0];
+                                }
 
-                            if (adjustCommand.contains(" ")) {
-                                adjustCommand = adjustCommand.split(" ")[0];
+                                if (commandWithClass.getAlias().equals(adjustCommand)) {
+                                    try {
+                                        logger.info(Objects.requireNonNull(XMLs.getFromStringsXML(Main.DEF_CORE_STRINGS_XML, "command_ok"))
+                                                .replace("%1", update.getMessage().getFrom().getFirstName() + " (" + usrId + ")")
+                                                .replace("%2", adjustCommand));
+                                        runMethod(commandWithClass.getClazz(), update, tBot, chatPrefs);
+                                    } catch (Exception e) {
+                                        logger.error(Objects.requireNonNull(XMLs.getFromStringsXML(Main.DEF_CORE_STRINGS_XML, "command_failure"))
+                                                .replace("%1", commandWithClass.getAlias())
+                                                .replace("%2", e.getMessage()), e);
+                                    }
+                                }
                             }
+                        }
+                    } else {
+                        if (!(update.getMessage().getFrom().getId() == Float.parseFloat(String.valueOf(777000)))) {
+                            if (chatPrefs.getAbleToSendRandomMessage() == 1) {
+                                /*
+                                 * Random number/XP (or lucky)
+                                 */
+                                Random random = new Random();
+                                int low = 0, high = 15, lowLucky = 0, highLucky = 1000;
+                                int randomInt = random.nextInt(high - low) + low;
+                                int randomXP = random.nextInt(highLucky - lowLucky) + lowLucky;
 
-                            if (cmds.getAlias().equals(adjustCommand)) {
-                                try {
-                                    runMethod(cmds.getClazz(), update, tBot, chatPrefs);
-                                    LOGGER.info(Objects.requireNonNull(XMLs.getFromStringsXML(Main.DEF_CORE_STRINGS_XML, "command_ok"))
-                                            .replace("%1", String.valueOf(usrId))
-                                            .replace("%2", adjustCommand));
-                                } catch (Exception e) {
-                                    LOGGER.error(Objects.requireNonNull(XMLs.getFromStringsXML(Main.DEF_CORE_STRINGS_XML, "command_failure"))
-                                            .replace("%1", cmds.getAlias())
-                                            .replace("%2", e.getMessage()), e);
+                                if (randomInt > randomXP) {
+                                    sendReply(messages[randomInt], update);
                                 }
                             }
                         }
                     }
                 }
-            }
-        }.init(this)).start();
+            }.init(this)).start();
+        }
     }
 
-    public int sendMessage(String msg, Update update) {
-        SendMessage sndmsg = new SendMessage();
-        sndmsg.setText(msg);
-        sndmsg.setChatId(String.valueOf(update.getMessage().getChatId()));
-        sndmsg.enableMarkdown(true);
-        sndmsg.disableWebPagePreview();
+    public void sendMessageAsync(String msg, Update update) {
+        /*
+         * Prepare SendMessage base
+         */
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setText(msg);
+        sendMessage.setChatId(String.valueOf(update.getMessage().getChatId()));
+        sendMessage.enableMarkdown(true);
+        sendMessage.disableWebPagePreview();
+
+        /*
+         * Execute executeAsync() method
+         */
         try {
-            return execute(sndmsg).getMessageId();
-        } catch (TelegramApiException e) {
-            LOGGER.error(e.getMessage(), e);
+            executeAsync(sendMessage).get().getMessageId();
+        } catch (TelegramApiException | ExecutionException | InterruptedException exception) {
+            logger.error(exception.getMessage() + " (CID: " + update.getMessage().getChat().getId() + " | UID: " + update.getMessage().getFrom().getId() + ")");
+        }
+    }
+
+    public int sendMessageAsyncBase(SendMessage sendMessage, Update update) {
+        /*
+         * Execute executeAsync() method & use existent SendMessage object
+         */
+        try {
+            return executeAsync(sendMessage).get().getMessageId();
+        } catch (TelegramApiException | ExecutionException | InterruptedException exception) {
+            logger.error(exception.getMessage() + " (CID: " + update.getMessage().getChat().getId() + " | UID: " + update.getMessage().getFrom().getId() + ")");
         }
         return 0;
     }
 
+    public void deleteMessage(String chatID, Integer messageID, Update update) {
+        /*
+         * Prepare DeleteMessage base
+         */
+        DeleteMessage deleteMessage = new DeleteMessage();
+        deleteMessage.setMessageId(messageID);
+        deleteMessage.setChatId(chatID);
+
+        /*
+         * Execute executeAsync() method
+         */
+        try {
+            executeAsync(deleteMessage);
+        } catch (TelegramApiException telegramApiException) {
+            logger.error(telegramApiException.getMessage() + " (CID: " + update.getMessage().getChat().getId() + " | UID: " + update.getMessage().getFrom().getId() + ")");
+        }
+    }
 
     public int sendReply(String msg, Update update) {
-        SendMessage sndmsg = new SendMessage();
-        sndmsg.setText(msg);
-        sndmsg.setChatId(String.valueOf(update.getMessage().getChatId()));
-        sndmsg.enableMarkdown(true);
-        sndmsg.setReplyToMessageId(update.getMessage().getMessageId());
-        sndmsg.disableWebPagePreview();
+        /*
+         * Prepare SendMessage base
+         */
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setText(msg);
+        sendMessage.setChatId(String.valueOf(update.getMessage().getChatId()));
+        sendMessage.enableHtml(true);
+        sendMessage.setReplyToMessageId(update.getMessage().getMessageId());
+        sendMessage.disableWebPagePreview();
+
+        /*
+         * Execute executeAsync() method
+         */
         try {
-            return execute(sndmsg).getMessageId();
-        } catch (TelegramApiException e) {
-            LOGGER.error(e.getMessage(), e);
+            return executeAsync(sendMessage).get().getMessageId();
+        } catch (TelegramApiException | ExecutionException | InterruptedException exception) {
+            logger.error(exception.getMessage() + " (CID: " + update.getMessage().getChat().getId() + " | UID: " + update.getMessage().getFrom().getId() + ")");
         }
         return 0;
     }
 
-    public int sendMessage2ID(String msg, long id) {
-        SendMessage sndmsg = new SendMessage();
-        sndmsg.setText(msg);
-        sndmsg.setChatId(String.valueOf(id));
-        sndmsg.enableMarkdown(true);
-        sndmsg.disableWebPagePreview();
+    public void sendReply2ID(String msg, int id, Update update) {
+        /*
+         * Prepare SendMessage base
+         */
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setText(msg);
+        sendMessage.setChatId(String.valueOf(update.getMessage().getChatId()));
+        sendMessage.enableHtml(true);
+        sendMessage.setReplyToMessageId(id);
+        sendMessage.disableWebPagePreview();
+
+        /*
+         * Execute executeAsync() method
+         */
         try {
-            return execute(sndmsg).getMessageId();
-        } catch (TelegramApiException e) {
-            LOGGER.error(e.getMessage(), e);
+            executeAsync(sendMessage).get().getMessageId();
+        } catch (TelegramApiException | ExecutionException | InterruptedException exception) {
+            logger.error(exception.getMessage() + " (CID: " + update.getMessage().getChat().getId() + " | UID: " + update.getMessage().getFrom().getId() + ")");
         }
-        return 0;
     }
 
     public void editMessage(String msg, Update update, int id) {
+        /*
+         * Prepare EditMessageText base
+         */
         EditMessageText editMessageText = new EditMessageText();
         editMessageText.setText(msg);
         editMessageText.setChatId(String.valueOf(update.getMessage().getChatId()));
         editMessageText.setMessageId(id);
-        editMessageText.enableMarkdown(true);
+        editMessageText.enableHtml(true);
+
+        /*
+         * Execute executeAsync() method
+         */
         try {
-            execute(editMessageText);
-        } catch (TelegramApiException e) {
-            // ignoring errors on edit, keep caution
-            //LOGGER.error(e.getMessage(), e);
+            executeAsync(editMessageText);
+        } catch (TelegramApiException telegramApiException) {
+            logger.error(telegramApiException.getMessage() + " (CID: " + update.getMessage().getChat().getId() + " | UID: " + update.getMessage().getFrom().getId() + ")");
         }
     }
 
-    public boolean isUserAdminOrPV(Update update) {
-        String id1 = update.getMessage().getFrom().getId().toString();
-        String id2 = update.getMessage().getChat().getId().toString();
-        if (id1.equals(id2)) {
-            // private chat
-            return true;
+    public boolean isPM(String userID, String chatID) {
+        return !chatID.equals(userID);
+    }
+
+    public boolean isAdmin(String userID, String chatID) {
+        if (userID.equals(chatID)) {
+            /*
+             * https://github.com/TrebleExperience/Bot3/commit/0f31e973edecce5ea25a92a6b3b841aaae1b333c
+             */
+            return false;
         } else {
             try {
-                GetChatMember z = new GetChatMember();
-                z.setChatId(String.valueOf(update.getMessage().getChatId()));
-                z.setUserId(update.getMessage().getFrom().getId());
-                ChatMember cx = execute(z);
-                switch (cx.getStatus()) {
-                    case "administrator":
-                    case "creator":
-                        return true;
-                    default:
-                        return false;
-                }
-            } catch (Exception e) {
-                LOGGER.error(e.getMessage(), e);
+                /*
+                 * Create GetChatMember() object to get info of the user
+                 */
+                GetChatMember getChatMember = new GetChatMember();
+                getChatMember.setChatId(chatID);
+                getChatMember.setUserId(Long.valueOf(userID));
+
+                /*
+                 * Execute GetChatMember() (to get info) using ChatMember().execute()
+                 */
+                ChatMember chatMember = execute(getChatMember);
+
+                /*
+                 * If executed fine, we'll be able to check status
+                 */
+                return switch (chatMember.getStatus()) {
+                    case "administrator", "creator" -> true;
+                    default -> false;
+                };
+            } catch (Exception exception) {
+                logger.error(exception.getMessage() + " (CID: " + chatID + " | UID: " + userID + ")");
                 return false;
             }
+        }
+    }
+
+    public boolean leaveChat(String chatID) {
+        /*
+         * Prepare LeaveChat base
+         */
+        LeaveChat leaveChat = new LeaveChat();
+        leaveChat.setChatId(chatID);
+
+        /*
+         * Execute executeAsync() method
+         */
+        try {
+            return executeAsync(leaveChat).thenApply(response -> /* Just a workaround */ response.toString().equals("true")).get();
+        } catch (TelegramApiException | ExecutionException | InterruptedException telegramApiException) {
+            logger.error(telegramApiException.getMessage() + " (CID to leave: " + chatID + ")");
+            return false;
         }
     }
 
@@ -179,7 +344,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             Method method = ((Class<?>) aClass).getDeclaredMethod("botReply", Update.class, TelegramBot.class, PrefObj.class);
             method.invoke(instance, update, tBot, prefs);
         } catch (Exception e) {
-            LOGGER.error(e.getMessage(), e);
+            logger.error(e.getMessage());
         }
     }
 
@@ -189,25 +354,14 @@ public class TelegramBot extends TelegramLongPollingBot {
             try {
                 Object instance = ((Class<?>) clazz).getDeclaredConstructor().newInstance();
                 Method methodAli = ((Class<?>) clazz).getSuperclass().getDeclaredMethod("getAlias");
-                Method methodInf = ((Class<?>) clazz).getSuperclass().getDeclaredMethod("getCommandInfo");
                 String alias = (String) methodAli.invoke(instance);
-                String desc = (String) methodInf.invoke(instance);
-                CommandWithClass c = new CommandWithClass(clazz, alias, desc);
+                CommandWithClass c = new CommandWithClass(clazz, alias);
                 allCommandsArObj.add(c);
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error(e.getMessage());
             }
         }
         return allCommandsArObj;
-    }
-
-    private PrefObj getPrefs(Update update) {
-        long chatId = update.getMessage().getChatId();
-        PrefObj prefObj = DbThings.selectIntoPrefsTable(chatId);
-        if (prefObj == null) {
-            DbThings.insertIntoPrefsTable(chatId);
-        }
-        return prefObj;
     }
 
     @Override
@@ -220,4 +374,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         return bot.getToken();
     }
 
+    public String getVersionID() {
+        return bot.getVersionID();
+    }
 }
